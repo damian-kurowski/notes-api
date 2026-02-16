@@ -3,6 +3,7 @@ package pl.edu.notes.repository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.test.context.ActiveProfiles;
 import pl.edu.notes.model.Category;
 import pl.edu.notes.model.Note;
@@ -13,11 +14,9 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 // @DataJpaTest - laduje TYLKO warstwe JPA (repozytoria, encje, baze H2)
-// nie laduje kontrolerow ani serwisow - test jest szybszy
 // @ActiveProfiles("test") - uzywa osobnego srodowiska testowego (application-test.properties)
 @DataJpaTest
 @ActiveProfiles("test")
-@TestMethodOrder(MethodOrderer.MethodName.class)
 class NoteRepositoryTest {
 
     @Autowired
@@ -26,29 +25,35 @@ class NoteRepositoryTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    // TestEntityManager - narzedzie testowe do bezposredniej pracy z EntityManagerem
+    // pozwala na flush() i clear() zeby wymusic synchronizacje z baza
+    @Autowired
+    private TestEntityManager entityManager;
+
     private Category category;
 
     // @BeforeEach - wykonuje sie przed KAZDYM testem
-    // czysci baze i tworzy dane testowe od nowa
-    // kolejnosc: najpierw notatki (bo maja klucz obcy), potem kategorie
+    // deleteAllInBatch() wykonuje natychmiastowy SQL DELETE (szybsze niz deleteAll)
+    // flush + clear - wymusza synchronizacje z baza i czysci cache pierwszego poziomu
     @BeforeEach
     void setUp() {
-        noteRepository.deleteAll();
-        categoryRepository.deleteAll();
+        noteRepository.deleteAllInBatch();
+        categoryRepository.deleteAllInBatch();
+        entityManager.flush();
+        entityManager.clear();
 
-        category = new Category("Uczelnia");
-        category = categoryRepository.save(category);
+        category = categoryRepository.saveAndFlush(new Category("Uczelnia"));
 
         Note note1 = new Note("Projekt z baz danych", "Oddac do piatku");
         note1.setCategory(category);
-        noteRepository.save(note1);
+        noteRepository.saveAndFlush(note1);
 
         Note note2 = new Note("Zakupy na weekend", "Mleko, chleb");
-        noteRepository.save(note2);
+        noteRepository.saveAndFlush(note2);
 
         Note note3 = new Note("Notatka z baz danych", "SQL, JPA, Hibernate");
         note3.setCategory(category);
-        noteRepository.save(note3);
+        noteRepository.saveAndFlush(note3);
     }
 
     // Test: zapisanie notatki do bazy i sprawdzenie czy dostala id
@@ -73,7 +78,7 @@ class NoteRepositoryTest {
     // Test: pobranie notatki po id
     @Test
     void findById_shouldReturnNote_whenExists() {
-        Note saved = noteRepository.save(new Note("Testowa", "Tresc"));
+        Note saved = noteRepository.saveAndFlush(new Note("Testowa", "Tresc"));
 
         Optional<Note> found = noteRepository.findById(saved.getId());
 
@@ -117,9 +122,9 @@ class NoteRepositoryTest {
     // Test: aktualizacja notatki w bazie
     @Test
     void save_shouldUpdateExistingNote() {
-        Note saved = noteRepository.save(new Note("Stary tytul", "Stara tresc"));
+        Note saved = noteRepository.saveAndFlush(new Note("Stary tytul", "Stara tresc"));
         saved.setTitle("Nowy tytul");
-        Note updated = noteRepository.save(saved);
+        Note updated = noteRepository.saveAndFlush(saved);
 
         assertEquals(saved.getId(), updated.getId());
         assertEquals("Nowy tytul", updated.getTitle());
@@ -128,10 +133,11 @@ class NoteRepositoryTest {
     // Test: usuwanie notatki z bazy
     @Test
     void delete_shouldRemoveNote() {
-        Note saved = noteRepository.save(new Note("Do usuniecia", "test"));
+        Note saved = noteRepository.saveAndFlush(new Note("Do usuniecia", "test"));
         Long id = saved.getId();
 
         noteRepository.delete(saved);
+        noteRepository.flush();
 
         assertFalse(noteRepository.findById(id).isPresent());
     }
@@ -141,8 +147,9 @@ class NoteRepositoryTest {
     void save_shouldPersistNoteWithCategory() {
         Note note = new Note("Z kategoria", "Tresc");
         note.setCategory(category);
-        Note saved = noteRepository.save(note);
+        Note saved = noteRepository.saveAndFlush(note);
 
+        entityManager.clear();
         Note found = noteRepository.findById(saved.getId()).orElseThrow();
         assertNotNull(found.getCategory());
         assertEquals("Uczelnia", found.getCategory().getName());
@@ -152,8 +159,9 @@ class NoteRepositoryTest {
     @Test
     void save_shouldPersistNoteWithoutCategory() {
         Note note = new Note("Bez kategorii", "Tresc");
-        Note saved = noteRepository.save(note);
+        Note saved = noteRepository.saveAndFlush(note);
 
+        entityManager.clear();
         Note found = noteRepository.findById(saved.getId()).orElseThrow();
         assertNull(found.getCategory());
     }

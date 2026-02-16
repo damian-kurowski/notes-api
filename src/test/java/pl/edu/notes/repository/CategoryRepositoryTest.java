@@ -3,7 +3,7 @@ package pl.edu.notes.repository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.test.annotation.Rollback;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.test.context.ActiveProfiles;
 import pl.edu.notes.model.Category;
 
@@ -13,44 +13,39 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 
 // @DataJpaTest - testuje TYLKO warstwe JPA z baza H2 in-memory
-// @ActiveProfiles("test") - uzywa application-test.properties zamiast application.properties
-// dzieki temu testy maja osobna baze danych i nie laduja data.sql
+// @ActiveProfiles("test") - uzywa application-test.properties (osobna baza, bez data.sql)
 @DataJpaTest
 @ActiveProfiles("test")
-// @TestMethodOrder - testy wykonuja sie w kolejnosci nazw metod (przewidywalnosc)
-@TestMethodOrder(MethodOrderer.MethodName.class)
 class CategoryRepositoryTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
 
-    // @BeforeAll - wykonuje sie RAZ przed wszystkimi testami (nie przed kazdym)
-    // static - wymagane przez JUnit 5 dla @BeforeAll
-    // tworzy dane testowe tylko raz - unika problemu z unikatowoscia nazw
-    @BeforeAll
-    static void setUpAll(@Autowired CategoryRepository categoryRepository) {
-        categoryRepository.save(new Category("Osobiste"));
-        categoryRepository.save(new Category("Uczelnia"));
-        categoryRepository.save(new Category("Praca"));
-    }
+    // TestEntityManager - narzedzie testowe Spring Data JPA
+    // pozwala na flush() i clear() zeby wymusic zapis do bazy i wyczyscic cache
+    @Autowired
+    private TestEntityManager entityManager;
 
-    // @AfterEach - wykonuje sie PO kazdym tescie
-    // cofa zmiany wprowadzone przez test (np. dodane lub usuniete kategorie)
-    // przywraca baze do stanu poczatkowego (3 kategorie z @BeforeAll)
-    @AfterEach
-    void tearDown() {
-        categoryRepository.deleteAll();
-        categoryRepository.save(new Category("Osobiste"));
-        categoryRepository.save(new Category("Uczelnia"));
-        categoryRepository.save(new Category("Praca"));
+    // @BeforeEach - wykonuje sie przed KAZDYM testem
+    // deleteAllInBatch() - natychmiastowy SQL DELETE (szybszy niz deleteAll)
+    // flush + clear - synchronizacja z baza i czyszczenie cache Hibernate
+    // dzieki temu kazdy test startuje z czysta baza i 3 kategoriami
+    @BeforeEach
+    void setUp() {
+        categoryRepository.deleteAllInBatch();
+        entityManager.flush();
+        entityManager.clear();
+
+        categoryRepository.saveAndFlush(new Category("Osobiste"));
+        categoryRepository.saveAndFlush(new Category("Uczelnia"));
+        categoryRepository.saveAndFlush(new Category("Praca"));
     }
 
     // Test: zapisanie nowej kategorii do bazy i sprawdzenie czy dostala id
     @Test
-    @Rollback(false)
     void save_shouldPersistCategory() {
         Category category = new Category("Hobby");
-        Category saved = categoryRepository.save(category);
+        Category saved = categoryRepository.saveAndFlush(category);
 
         assertNotNull(saved.getId());
         assertEquals("Hobby", saved.getName());
@@ -67,7 +62,7 @@ class CategoryRepositoryTest {
     // Test: pobranie kategorii po id - sprawdza czy Optional zawiera wynik
     @Test
     void findById_shouldReturnCategory_whenExists() {
-        Category saved = categoryRepository.save(new Category("Testowa"));
+        Category saved = categoryRepository.saveAndFlush(new Category("Testowa"));
 
         Optional<Category> found = categoryRepository.findById(saved.getId());
 
@@ -83,12 +78,12 @@ class CategoryRepositoryTest {
         assertFalse(found.isPresent());
     }
 
-    // Test: aktualizacja nazwy istniejacj kategorii
+    // Test: aktualizacja nazwy istniejacej kategorii
     @Test
     void save_shouldUpdateExistingCategory() {
-        Category saved = categoryRepository.save(new Category("Stara"));
+        Category saved = categoryRepository.saveAndFlush(new Category("Stara"));
         saved.setName("Zmieniona");
-        Category updated = categoryRepository.save(saved);
+        Category updated = categoryRepository.saveAndFlush(saved);
 
         assertEquals(saved.getId(), updated.getId());
         assertEquals("Zmieniona", updated.getName());
@@ -97,10 +92,11 @@ class CategoryRepositoryTest {
     // Test: usuwanie kategorii z bazy
     @Test
     void delete_shouldRemoveCategory() {
-        Category saved = categoryRepository.save(new Category("Do usuniecia"));
+        Category saved = categoryRepository.saveAndFlush(new Category("Do usuniecia"));
         Long id = saved.getId();
 
         categoryRepository.delete(saved);
+        categoryRepository.flush();
 
         assertFalse(categoryRepository.findById(id).isPresent());
     }
