@@ -1,9 +1,9 @@
 package pl.edu.notes.repository;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.test.context.ActiveProfiles;
 import pl.edu.notes.model.Category;
 import pl.edu.notes.model.Note;
 
@@ -14,7 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 // @DataJpaTest - laduje TYLKO warstwe JPA (repozytoria, encje, baze H2)
 // nie laduje kontrolerow ani serwisow - test jest szybszy
+// @ActiveProfiles("test") - uzywa osobnego srodowiska testowego (application-test.properties)
 @DataJpaTest
+@ActiveProfiles("test")
+@TestMethodOrder(MethodOrderer.MethodName.class)
 class NoteRepositoryTest {
 
     @Autowired
@@ -25,14 +28,16 @@ class NoteRepositoryTest {
 
     private Category category;
 
-    // @BeforeEach - wykonuje sie przed KAZDYM testem, przygotowuje dane testowe
+    // @BeforeEach - wykonuje sie przed KAZDYM testem
+    // czysci baze i tworzy dane testowe od nowa
+    // kolejnosc: najpierw notatki (bo maja klucz obcy), potem kategorie
     @BeforeEach
     void setUp() {
         noteRepository.deleteAll();
         categoryRepository.deleteAll();
 
         category = new Category("Uczelnia");
-        categoryRepository.save(category);
+        category = categoryRepository.save(category);
 
         Note note1 = new Note("Projekt z baz danych", "Oddac do piatku");
         note1.setCategory(category);
