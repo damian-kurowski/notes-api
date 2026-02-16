@@ -29,6 +29,13 @@ bin/
 ### Mac OS ###
 .DS_Store
 
+### IntelliJ project files ###
+.idea/
+*.iml
+
+### Claude ###
+.claude/
+
 ### Maven ###
 target/
 pom.xml.tag

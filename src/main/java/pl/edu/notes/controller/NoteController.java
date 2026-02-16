@@ -4,7 +4,9 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import pl.edu.notes.model.Category;
 import pl.edu.notes.model.Note;
+import pl.edu.notes.repository.CategoryRepository;
 import pl.edu.notes.repository.NoteRepository;
 
 import java.util.List;
@@ -14,9 +16,11 @@ import java.util.List;
 public class NoteController {
 
     private final NoteRepository noteRepository;
+    private final CategoryRepository categoryRepository;
 
-    public NoteController(NoteRepository noteRepository) {
+    public NoteController(NoteRepository noteRepository, CategoryRepository categoryRepository) {
         this.noteRepository = noteRepository;
+        this.categoryRepository = categoryRepository;
     }
 
     @GetMapping
@@ -43,6 +47,7 @@ public class NoteController {
                 .map(note -> {
                     note.setTitle(noteDetails.getTitle());
                     note.setContent(noteDetails.getContent());
+                    note.setCategory(noteDetails.getCategory());
                     Note updatedNote = noteRepository.save(note);
                     return ResponseEntity.ok(updatedNote);
                 })
@@ -55,6 +60,23 @@ public class NoteController {
                 .map(note -> {
                     noteRepository.delete(note);
                     return ResponseEntity.noContent().<Void>build();
+                })
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    // PUT /api/notes/{noteId}/category/{categoryId} - przypisuje kategorie do notatki
+    @PutMapping("/{noteId}/category/{categoryId}")
+    public ResponseEntity<Note> assignCategory(@PathVariable Long noteId, @PathVariable Long categoryId) {
+        return noteRepository.findById(noteId)
+                .map(note -> {
+                    Category category = categoryRepository.findById(categoryId)
+                            .orElse(null);
+                    if (category == null) {
+                        return ResponseEntity.notFound().<Note>build();
+                    }
+                    note.setCategory(category);
+                    Note updated = noteRepository.save(note);
+                    return ResponseEntity.ok(updated);
                 })
                 .orElse(ResponseEntity.notFound().build());
     }

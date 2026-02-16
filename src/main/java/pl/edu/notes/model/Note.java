@@ -3,6 +3,7 @@ package pl.edu.notes.model;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.time.LocalDateTime;
 
 @Entity
@@ -12,6 +13,13 @@ public class Note {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    // @ManyToOne - wiele notatek moze nalezec do jednej kategorii
+    // @JoinColumn - nazwa kolumny klucza obcego w tabeli "notes" wskazujacego na kategorie
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    @JsonIgnoreProperties("notes") // zapobiega nieskonczonej petli przy serializacji JSON (kategoria->notatki->kategoria->...)
+    private Category category;
 
     @NotBlank(message = "Tytuł nie może być pusty")
     @Size(max = 100, message = "Tytuł może mieć maksymalnie 100 znaków")
@@ -84,5 +92,13 @@ public class Note {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public void setCategory(Category category) {
+        this.category = category;
     }
 }
